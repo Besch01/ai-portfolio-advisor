@@ -58,6 +58,16 @@ cur.executemany(
     sell_transactions
 )
 
+# 5. Creation of the view portfolio
+cur.execute("""
+CREATE VIEW IF NOT EXISTS current_portfolio AS
+SELECT 
+    ticker,
+    SUM(quantity) AS total_quantity,
+    ROUND(AVG(price), 2) AS avg_price
+FROM transactions
+GROUP BY ticker
+""")
 conn.commit()
 
 
@@ -67,6 +77,13 @@ cur.execute("SELECT * FROM transactions")
 for row in cur.fetchall():
     print(row)
 
+# 5.1 Test: sprint the current portoflio
+cur.execute("SELECT * FROM current_portfolio")
+print("Current Portfolio:")
+for row in cur.fetchall():
+    print(row)
+
+conn.commit()
 conn.close()
 
 print(f"\nDatabase created successfully at:\n{db_path}")
