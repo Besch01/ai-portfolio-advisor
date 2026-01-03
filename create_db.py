@@ -41,9 +41,9 @@ transactions = [
 ]
 
 sell_transactions = [
-    ("2025-06-2", "AAPL", "Apple Inc.", "Technology", -3, 201.28),
-    ("2025-06-2", "NVDA", "NVIDIA Corp.", "Technology", -1, 137.36),
-    ("2025-06-2", "KO", "Coca-Cola Co.", "Consumer", -5, 70.45),
+    ("2025-06-02", "AAPL", "Apple Inc.", "Technology", -3, 201.28),
+    ("2025-06-02", "NVDA", "NVIDIA Corp.", "Technology", -1, 137.36),
+    ("2025-06-02", "KO", "Coca-Cola Co.", "Consumer", -5, 70.45),
 ]
 
 
@@ -77,7 +77,7 @@ cur.execute("SELECT * FROM transactions")
 for row in cur.fetchall():
     print(row)
 
-# 5.1 Test: sprint the current portoflio
+# 5.1 Test: print the current portfolio
 cur.execute("SELECT * FROM current_portfolio")
 print("Current Portfolio:")
 for row in cur.fetchall():
