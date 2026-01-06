@@ -42,12 +42,12 @@ def insert_transaction(conn, date, ticker, name, sector, quantity, price):
         (date, ticker, name, sector, quantity, price)
     )
     
-    conn.commit()  # saves the modify
+    conn.commit()  # saves the modifies
 
 
 def get_current_portfolio(conn):
     """
-    It returns the current portfolio, showing: ticker, total quantity, average price.
+    It returns the current portfolio, showing: ticker, name, sector, total quantity, average price and invested value.
     """
     cur = conn.cursor()
     cur.execute("SELECT * FROM current_portfolio")
@@ -56,29 +56,38 @@ def get_current_portfolio(conn):
 
 def get_historical_portfolio(conn, date):
     """
-    It returns the portfolio until the date of interest.
+    Returns the portfolio until the given date.
+    Calculates total quantity and weighted average price manually.
     """
     cur = conn.cursor()
     cur.execute("""
         SELECT 
             ticker,
             SUM(quantity) AS total_quantity,
-            ROUND(AVG(price), 2) AS avg_price
+            ROUND(
+                SUM(CASE WHEN quantity > 0 THEN quantity * price ELSE 0 END)
+                / NULLIF(SUM(CASE WHEN quantity > 0 THEN quantity ELSE 0 END), 0), 2
+            ) AS avg_price,
+            ROUND(
+                SUM(quantity) *
+                (SUM(CASE WHEN quantity > 0 THEN quantity * price ELSE 0 END)
+                / NULLIF(SUM(CASE WHEN quantity > 0 THEN quantity ELSE 0 END), 0)), 2
+            ) AS invested_value
         FROM transactions
         WHERE date <= ?
         GROUP BY ticker
+        HAVING total_quantity > 0
     """, (date,))
     return cur.fetchall()
 
-def get_best_return(conn):
+def get_best_avg_price(conn):
     """
-    It returns the title with the highest return, based on the average price.
+    It returns the title with the highest average purchase price from the current portfolio.
     """
     cur = conn.cursor()
     cur.execute("""
-        SELECT ticker, ROUND(AVG(price), 2) AS avg_price
-        FROM transactions
-        GROUP BY ticker
+        SELECT ticker, name, sector, avg_price
+        FROM current_portfolio
         ORDER BY avg_price DESC
         LIMIT 1
     """)
@@ -127,10 +136,9 @@ def get_portfolio_summary(conn):
     cur.execute("""
         SELECT 
             SUM(quantity) AS total_quantity,
-            ROUND(SUM(quantity * price), 2) AS total_value,
-            ROUND(AVG(price), 2) AS avg_price
-            ROUND(SUM(quantity * price) / SUM(quantity), 2) AS weighted_avg_price
-        FROM transactions
+            ROUND(SUM(invested_value), 2) AS total_invested,
+            ROUND(SUM(total_quantity * avg_price) / NULLIF(SUM(total_quantity), 0), 2) AS weighted_avg_price
+        FROM current_portfolio
     """)
     return cur.fetchone()
 
@@ -140,11 +148,12 @@ def get_sector_allocation(conn):
     """
     cur = conn.cursor()
     cur.execute("""
-        SELECT sector, SUM(quantity * price) AS total_invested
-        FROM transactions
+        SELECT sector, SUM(invested_value) AS total_invested
+        FROM current_portfolio
         GROUP BY sector
     """)
     data = cur.fetchall()
     total = sum(row[1] for row in data)
     allocation = [(row[0], round(row[1]/total*100, 2)) for row in data]
     return allocation
+
