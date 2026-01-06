@@ -13,6 +13,8 @@ cur = conn.cursor()
 
 
 # 2. Creation of table transactions
+# This table stores ALL historical transactions (buy & sell); if quantity > 0  → buy; otherwise → sell
+
 cur.execute("""
 CREATE TABLE IF NOT EXISTS transactions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,17 +61,39 @@ cur.executemany(
 )
 
 # 5. Creation of the view portfolio
+#This VIEW represents the CURRENT STATE of the portfolio:
+# - total_quantity: net position
+# - avg_price: weighted average buy price
+# - invested_value: capital invested in the open position
+#
+# Titles with total_quantity = 0 are excluded
+
 cur.execute("""
 CREATE VIEW IF NOT EXISTS current_portfolio AS
-SELECT 
+SELECT
     ticker,
+    name,
+    sector,
     SUM(quantity) AS total_quantity,
-    ROUND(AVG(price), 2) AS avg_price
+    ROUND(
+        SUM(CASE WHEN quantity > 0 THEN quantity * price ELSE 0 END)
+        / NULLIF(SUM(CASE WHEN quantity > 0 THEN quantity ELSE 0 END), 0),
+        2
+    ) AS avg_price,
+    ROUND(
+        SUM(quantity) *
+        (
+            SUM(CASE WHEN quantity > 0 THEN quantity * price ELSE 0 END)
+            / NULLIF(SUM(CASE WHEN quantity > 0 THEN quantity ELSE 0 END), 0)
+        ),
+        2
+    ) AS invested_value
 FROM transactions
-GROUP BY ticker
+GROUP BY ticker, name, sector
+HAVING total_quantity > 0
 """)
-conn.commit()
 
+conn.commit()
 
 # 5. Check inserted data
 print("Transactions in database:\n")
@@ -87,4 +111,3 @@ conn.commit()
 conn.close()
 
 print(f"\nDatabase created successfully at:\n{db_path}")
-
