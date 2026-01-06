@@ -6,6 +6,8 @@ import sqlite3
 import os
 
 
+
+
 def get_connection():
     """
     It returns a connection to the database 'portfolio_manager.db'.
@@ -21,6 +23,9 @@ def get_connection():
     conn = sqlite3.connect(db_path)
     
     return conn
+
+conn = get_connection()
+print("I am using the database:", os.path.abspath(conn.execute("PRAGMA database_list").fetchall()[0][2]))
 
 def insert_transaction(conn, date, ticker, name, sector, quantity, price):
     """
@@ -112,6 +117,18 @@ def get_transactions_by_date(conn, start_date, end_date):
     """, (start_date, end_date))
     return cur.fetchall()
 
+def get_portfolio_by_sector(conn):
+    """
+    It returns the total invested value per sector from the current portfolio.
+    """
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT sector, SUM(invested_value) AS total_invested
+        FROM current_portfolio
+        GROUP BY sector
+    """)
+    return cur.fetchall()
+
 def update_transaction(conn, transaction_id, **kwargs):
     """
     It updates the field of a transaction.
@@ -135,7 +152,7 @@ def get_portfolio_summary(conn):
     cur = conn.cursor()
     cur.execute("""
         SELECT 
-            SUM(quantity) AS total_quantity,
+            SUM(total_quantity) AS total_quantity,
             ROUND(SUM(invested_value), 2) AS total_invested,
             ROUND(SUM(total_quantity * avg_price) / NULLIF(SUM(total_quantity), 0), 2) AS weighted_avg_price
         FROM current_portfolio
