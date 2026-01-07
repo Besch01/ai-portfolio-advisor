@@ -146,3 +146,128 @@ def portfolio_current_vs_purchase(transactions_df, latest_prices):
     }).fillna(0)
     
     return result
+
+"""
+API Tools for Portfolio Database
+
+"""
+
+import yfinance as yf
+
+from database_tools import get_connection, insert_transaction
+
+
+def insert_market_transaction(ticker, quantity, name=None, sector=None):
+    """
+    Inserts a new transaction in the database at the current market price.
+
+    Parameters:
+    - ticker (str)
+    - quantity (float): positive for buy, negative for sell
+    - name (str, optional): company name
+    - sector (str, optional): company sector
+
+    Returns:
+    - dict with inserted transaction details
+    """
+
+    # -----------------------------
+    # 1. Get current market price
+    # -----------------------------
+    stock = yf.Ticker(ticker)
+    hist = stock.history(period="5d")
+
+    if hist.empty:
+        raise ValueError(f"Market price not available for ticker {ticker}")
+
+    market_price = round(hist["Close"].iloc[-1], 2)
+
+    # -----------------------------
+    # 2. Get metadata if missing
+    # -----------------------------
+    info = stock.info
+
+    if name is None:
+        name = info.get("shortName", ticker)
+
+    if sector is None:
+        sector = info.get("sector", "Unknown")
+
+    # -----------------------------
+    # 3. Insert transaction
+    # -----------------------------
+    transaction_date = date.today().isoformat()
+
+    conn = get_connection()
+    insert_transaction(
+        conn=conn,
+        date=transaction_date,
+        ticker=ticker,
+        name=name,
+        sector=sector,
+        quantity=quantity,
+        price=market_price
+    )
+    conn.close()
+
+    # -----------------------------
+    # 4. Return summary
+    # -----------------------------
+    return {
+        "ticker": ticker,
+        "quantity": quantity,
+        "price": market_price,
+        "date": transaction_date,
+        "name": name,
+        "sector": sector
+    }
+
+
+
+def get_best_returns_api(conn):
+    """
+    Calculates the real return for each title in the portfolio using the current market prices, via yahoofinance.
+
+    It returns a list of:
+    (ticker, name, sector, total_quantity, avg_price, market_price, return_pct)
+    ordered for return_pct descendant.
+    """
+    cur = conn.cursor()
+
+    # take the actual state of the portfolio from the view
+    cur.execute("SELECT ticker, name, sector, total_quantity, avg_price FROM current_portfolio")
+    portfolio = cur.fetchall()
+
+    results = []
+    for ticker, name, sector, total_quantity, avg_price in portfolio:
+        try:
+            # create the ticker for the title
+            stock = yf.Ticker(ticker)
+            
+            # obtain the average current market price
+            info = stock.info
+            market_price = info.get("regularMarketPrice")
+
+            # if there isn't regularMarketPrice, try to obtain a more recent close
+            if market_price is None:
+                hist = stock.history(period="1d")
+                if not hist.empty:
+                    market_price = hist["Close"].iloc[-1]
+                else:
+                    market_price = avg_price  # fallback if no data available
+
+            # calculates the percentage return
+            return_pct = round((market_price - avg_price) / avg_price * 100, 2)
+
+            results.append(
+                (ticker, name, sector, total_quantity, avg_price, market_price, return_pct)
+            )
+
+        except Exception as e:
+            # API/connection errors don't stop the entire calculation
+            print(f"Errore nell’ottenere il prezzo per {ticker}: {e}")
+            continue
+
+    # order for descendant returns
+    results.sort(key=lambda x: x[-1], reverse=True)
+    return results
