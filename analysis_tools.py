@@ -17,7 +17,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 # --- CONFIGURAZIONE ---
 NEWS_API_KEY = 'f478f541562347d38b316ef6a2d19cac' 
 
-# --- HELPER CONNESSIONE ---
+# --- HELPER CONNESSIONE --- ######### DA RIMUOVERE E SOSTITUIRE I GET_COMMECTION OVUNQUE
 def get_analysis_db_connection():
     conn = get_base_connection()
     conn.row_factory = sqlite3.Row
