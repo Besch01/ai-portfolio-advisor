@@ -158,7 +158,7 @@ def tool_sector_diversification_comparison():
     conn = get_connection()
     
     try:
-        initial_allocation = get_sector_allocation(conn) # Restituisce lista di tuple
+        initial_allocation = get_sector_allocation() # Restituisce lista di tuple
     except Exception:
         conn.close()
         return pd.DataFrame() # DataFrame vuoto in caso di errore
