@@ -151,7 +151,7 @@ API Tools for Portfolio Database
 
 """
 
-def get_market_transaction_data(ticker, quantity, name=None, sector=None):
+def get_market_transaction(ticker, quantity, name=None, sector=None):
     """
     Fetches current market price and metadata for a ticker.
 
