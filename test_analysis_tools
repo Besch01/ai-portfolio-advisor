@@ -1,0 +1,116 @@
+import os
+import pandas as pd
+import sys
+
+# Importiamo le funzioni da testare
+try:
+    from analysis_tools import (
+        tool_compute_returns,
+        get_best_returns_data,
+        tool_sector_diversification_comparison,
+        tool_optimize_markowitz_target,
+        tool_sentiment_analysis
+    )
+    print("✅ Modulo analysis_tools importato correttamente.\n")
+except ImportError as e:
+    print(f"❌ Errore di importazione: {e}")
+    print("Assicurati di essere nella cartella corretta e che i file esistano.")
+    sys.exit()
+
+def run_tests():
+    print("========================================")
+    print("   TESTING ANALYSIS TOOLS INTERFACE")
+    print("========================================\n")
+
+    # --- TEST 1: ROI ---
+    print("🔹 TEST 1: tool_compute_returns()")
+    try:
+        result = tool_compute_returns()
+        print(f"Tipo Output: {type(result)}")
+        print(f"Dati: {result}")
+        if "error" in result:
+            print("⚠️ Nota: La funzione ha restituito un errore logico (es. costo zero).")
+        else:
+            print("✅ Test Superato")
+    except Exception as e:
+        print(f"❌ CRASH: {e}")
+    print("-" * 40)
+
+    # --- TEST 2: BEST RETURNS ---
+    print("🔹 TEST 2: get_best_returns_data()")
+    try:
+        result = get_best_returns_data()
+        print(f"Tipo Output: {type(result)}")
+        
+        if isinstance(result, list):
+            print(f"Numero Asset trovati: {len(result)}")
+            if len(result) > 0:
+                print(f"Esempio primo asset: {result[0]}")
+            print("✅ Test Superato")
+        else:
+            print("⚠️ Output imprevisto (non è una lista).")
+    except Exception as e:
+        print(f"❌ CRASH: {e}")
+    print("-" * 40)
+
+    # --- TEST 3: DIVERSIFICATION ---
+    print("🔹 TEST 3: tool_sector_diversification_comparison()")
+    try:
+        df = tool_sector_diversification_comparison()
+        print(f"Tipo Output: {type(df)}")
+        
+        if isinstance(df, pd.DataFrame):
+            if not df.empty:
+                print("Anteprima DataFrame:")
+                print(df.to_string(index=False))
+                print("✅ Test Superato")
+            else:
+                print("⚠️ DataFrame vuoto (forse il DB è vuoto o mancano dati prezzi).")
+        else:
+            print("❌ Errore: L'output non è un DataFrame Pandas.")
+    except Exception as e:
+        print(f"❌ CRASH: {e}")
+    print("-" * 40)
+
+    # --- TEST 4: OPTIMIZATION ---
+    print("🔹 TEST 4: tool_optimize_markowitz_target(0.10)")
+    try:
+        target = 0.10
+        result = tool_optimize_markowitz_target(target)
+        print(f"Tipo Output: {type(result)}")
+        print(f"Dati: {result}")
+        
+        if "error" in result:
+             print(f"⚠️ Errore logico riportato: {result['error']}")
+        else:
+             print("✅ Test Superato")
+    except Exception as e:
+        print(f"❌ CRASH: {e}")
+    print("-" * 40)
+
+    # --- TEST 5: SENTIMENT ---
+    print("🔹 TEST 5: tool_sentiment_analysis()")
+    
+    # Controllo pre-flight per la API Key
+    if not os.getenv("NEWS_API_KEY"):
+        print("⚠️ ATTENZIONE: Variabile 'NEWS_API_KEY' non trovata.")
+        print("Il test potrebbe fallire o restituire errore API.")
+        # Se vuoi testare al volo senza export, scommenta la riga sotto:
+        # os.environ["NEWS_API_KEY"] = "f478f541562347d38b316ef6a2d19cac" 
+    
+    try:
+        # Lasciamo che scelga l'asset automaticamente (ticker=None)
+        result = tool_sentiment_analysis()
+        print(f"Tipo Output: {type(result)}")
+        print(f"Dati: {result}")
+        
+        if "error" in result:
+             print(f"⚠️ Errore API/Logica: {result['error']}")
+        else:
+             print("✅ Test Superato")
+    except Exception as e:
+        print(f"❌ CRASH: {e}")
+    print("-" * 40)
+
+if __name__ == "__main__":
+    run_tests()
