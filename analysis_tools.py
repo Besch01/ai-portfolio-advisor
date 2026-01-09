@@ -4,30 +4,45 @@ from scipy.optimize import minimize
 from datetime import datetime, timedelta
 import os
 import warnings
-
-# Importiamo SOLO le funzioni necessarie da db_tools
-# get_current_portfolio restituisce già una lista di dict, perfetta per Pandas
-from db_tools import get_current_portfolio, get_sector_allocation
-from api_tools import get_latest_close_prices, get_historical_prices
-
 from newsapi import NewsApiClient
 from textblob import TextBlob
+
+# Import dai tuoi file tools esistenti
+from db_tools import get_current_portfolio, get_sector_allocation
+from api_tools import get_latest_close_prices, get_historical_prices
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # --- CONFIGURAZIONE ---
-NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+NEWS_API_KEY = "f478f541562347d38b316ef6a2d19cac"
+
+# ============================
+# HELPER FUNCTIONS
+# ============================
+
+def unwrap_db_response(resp):
+    """
+    Estrae in sicurezza la lista dei dati dalla risposta del DB.
+    Gestisce il formato { 'status': 'ok', 'data': [...] } di db_tools.py.
+    """
+    if resp and isinstance(resp, dict) and resp.get("status") == "ok":
+        return resp.get("data", [])
+    return []
+
+# ============================
+# FUNZIONI ANALISI CORE
+# ============================
 
 # 1. COMPUTE RETURNS
 def tool_compute_returns():
     """
     Calcola il ROI del portafoglio incrociando i dati del DB con i prezzi API.
     """
-    # Recupera i dati puliti dal DB
-    portfolio = get_current_portfolio()
+    # Recupera i dati puliti usando l'helper
+    portfolio = unwrap_db_response(get_current_portfolio())
     
     if not portfolio: 
-        return {}
+        return {"error": "Portafoglio vuoto o errore DB"}
 
     tickers = [p['ticker'] for p in portfolio]
     current_prices = get_latest_close_prices(tickers)
@@ -37,16 +52,17 @@ def tool_compute_returns():
 
     for p in portfolio:
         ticker = p['ticker']
-        # Conversione in float per sicurezza matematica
+        # Conversione in float per sicurezza
         qty = float(p['total_quantity'])
         avg_price = float(p['avg_price'])
         
         # Prezzo corrente o fallback sul prezzo medio se API fallisce
         current_price = current_prices.get(ticker, avg_price)
+        if current_price is None:
+            current_price = avg_price
         
-        if current_price:
-            total_purchase_cost += qty * avg_price
-            total_current_value += qty * current_price
+        total_purchase_cost += qty * avg_price
+        total_current_value += qty * float(current_price)
     
     if total_purchase_cost == 0: 
         return {"error": "Il costo totale di acquisto è zero."}
@@ -65,7 +81,7 @@ def get_best_returns_data():
     """
     Restituisce una lista di asset ordinati per performance.
     """
-    portfolio_rows = get_current_portfolio()
+    portfolio_rows = unwrap_db_response(get_current_portfolio())
 
     if not portfolio_rows:
         return []
@@ -112,16 +128,20 @@ def tool_sector_diversification_comparison():
     Restituisce un DataFrame Pandas.
     """
     # 1. Allocazione Iniziale (dal DB - usa invested_value)
-    initial_allocation = get_sector_allocation()
+    raw_allocation = unwrap_db_response(get_sector_allocation())
+    
+    # Calcoliamo il totale investito per derivare le percentuali iniziali
+    total_invested_db = sum(float(item['total_invested']) for item in raw_allocation)
+    initial_dict = {}
+    if total_invested_db > 0:
+        for item in raw_allocation:
+            initial_dict[item['sector']] = (float(item['total_invested']) / total_invested_db) * 100
     
     # 2. Allocazione Corrente (dal DB + API - Valore Mercato)
-    # Riusiamo get_current_portfolio perché contiene già ticker, sector e quantity!
-    portfolio_data = get_current_portfolio()
+    portfolio_data = unwrap_db_response(get_current_portfolio())
 
     if not portfolio_data: 
         return pd.DataFrame()
-
-    initial_dict = {sector: perc for sector, perc in initial_allocation}
     
     # Convertiamo la lista di dict in DataFrame
     df_portfolio = pd.DataFrame(portfolio_data)
@@ -158,7 +178,7 @@ def tool_sector_diversification_comparison():
 
 # 4. MARKOWITZ OPTIMIZATION
 def tool_optimize_markowitz_target(target_return_annualized=0.10):
-    rows = get_current_portfolio()
+    rows = unwrap_db_response(get_current_portfolio())
     tickers = [row['ticker'] for row in rows]
 
     if len(tickers) < 2: 
@@ -169,7 +189,7 @@ def tool_optimize_markowitz_target(target_return_annualized=0.10):
     
     data = get_historical_prices(tickers, start_date, end_date)
     if data.empty: return {"error": "Dati storici non disponibili."}
-    
+      
     daily_returns = data.pct_change().dropna()
     expected_returns = daily_returns.mean() * 252
     cov_matrix = daily_returns.cov() * 252 
@@ -208,7 +228,7 @@ def tool_optimize_markowitz_target(target_return_annualized=0.10):
 def tool_sentiment_analysis(ticker=None):
     # Se non c'è ticker, prendiamo il più grande nel portafoglio
     if not ticker:
-        portfolio = get_current_portfolio()
+        portfolio = unwrap_db_response(get_current_portfolio())
         if portfolio:
             # Ordiniamo la lista in Python
             top_asset = sorted(portfolio, key=lambda x: x['total_quantity'], reverse=True)[0]
@@ -217,7 +237,7 @@ def tool_sentiment_analysis(ticker=None):
             return {"error": "Nessun ticker trovato o portafoglio vuoto."}
 
     if not NEWS_API_KEY:
-        return {"error": "API Key mancante. Esegui: export NEWS_API_KEY='tua_chiave' nel terminale."}
+        return {"error": "API Key mancante. Esegui export NEWS_API_KEY='...'"}
 
     try:
         newsapi = NewsApiClient(api_key=NEWS_API_KEY)
@@ -232,9 +252,20 @@ def tool_sentiment_analysis(ticker=None):
         
         for art in articles:
             title = art['title']
-            score = TextBlob(title).sentiment.polarity
+            description = art['description'] if art['description'] else "" # Prendiamo anche la descrizione
+            
+            # Uniamo titolo e descrizione per avere più testo da analizzare
+            full_text = f"{title}. {description}"
+            
+            # Analizziamo il testo completo
+            score = TextBlob(full_text).sentiment.polarity
             scores.append(score)
-            articles_data.append({"title": title, "score": round(score, 2), "source": art['source']['name']})
+            
+            articles_data.append({
+                "title": title, 
+                "score": round(score, 2), 
+                "source": art['source']['name']
+            })
 
         avg_score = sum(scores) / len(scores)
         label = "BULLISH" if avg_score > 0.1 else "BEARISH" if avg_score < -0.1 else "NEUTRAL"
@@ -249,3 +280,113 @@ def tool_sentiment_analysis(ticker=None):
 
     except Exception as e:
         return {"error": f"Errore API News: {str(e)}"}
+
+# ============================
+# DATAFRAME HELPERS (TIME SERIES)
+# ============================
+
+# 6. PORTFOLIO VALUE OVER TIME
+def portfolio_value_over_time(start_date, end_date):
+    """
+    Calcola il valore giornaliero del portafoglio a partire dallo stato attuale.
+    Utilizza i prezzi storici per i ticker presenti nel portfolio.
+    Returns: pandas Series (index=date, values=USD)
+    """
+    portfolio = unwrap_db_response(get_current_portfolio())
+    if not portfolio:
+        return pd.Series(dtype=float)
+    
+    # DataFrame sintetico con ticker e quantità
+    # Usiamo 'total_quantity' come definito in db_tools
+    df = pd.DataFrame(portfolio)
+    if 'total_quantity' not in df.columns:
+        return pd.Series(dtype=float)
+
+    df = df[['ticker', 'total_quantity']].rename(columns={'total_quantity': 'quantity'})
+    
+    tickers = df['ticker'].unique().tolist()
+    if not tickers:
+        return pd.Series(dtype=float)
+    
+    # Prendi prezzi storici
+    price_df = get_historical_prices(tickers, start_date, end_date)
+    if price_df.empty:
+        return pd.Series(dtype=float)
+    
+    # Quantità giornaliera costante (stato corrente)
+    qty_df = pd.DataFrame(index=price_df.index, columns=tickers)
+    for ticker in tickers:
+        qty_val = df.loc[df['ticker'] == ticker, 'quantity'].values[0]
+        qty_df[ticker] = qty_val
+    
+    # Valore giornaliero portfolio
+    portfolio_values = (qty_df * price_df).sum(axis=1)
+    return portfolio_values
+
+# 7. CURRENT VS PURCHASE VALUE
+def portfolio_current_vs_purchase():
+    """
+    Calcola per ciascun ticker il valore a prezzo medio di acquisto
+    e il valore corrente basato sugli ultimi prezzi di chiusura.
+    Returns: DataFrame ['purchase_value', 'current_value']
+    """
+    portfolio = unwrap_db_response(get_current_portfolio())
+    if not portfolio:
+        return pd.DataFrame(columns=['purchase_value','current_value'])
+    
+    df = pd.DataFrame(portfolio)
+    df = df[['ticker', 'total_quantity', 'avg_price']].rename(columns={'total_quantity': 'quantity'})
+    
+    tickers = df['ticker'].tolist()
+    latest_prices = get_latest_close_prices(tickers)
+    
+    df['purchase_value'] = df['quantity'] * df['avg_price']
+    df['current_value'] = df['quantity'] * df['ticker'].map(latest_prices)
+    
+    result = df.set_index('ticker')[['purchase_value','current_value']]
+    return result
+
+# ============================
+# MAIN TEST (Se eseguito come script)
+# ============================
+if __name__ == "__main__":
+    print("=== Testing Integration ===")
+    
+    # Test 1: Returns
+    print("\n1. Compute Returns:")
+    print(tool_compute_returns())
+
+    # Test 2: Helper Time Series
+    print("\n2. Portfolio Value Over Time:")
+    start_date = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
+    end_date = datetime.now().strftime('%Y-%m-%d')
+    pv = portfolio_value_over_time(start_date, end_date)
+    if not pv.empty:
+        print(pv.tail())
+    else:
+        print("Dati storici non disponibili o portafoglio vuoto.")
+
+    # Test 3: Best Returns
+    print("\n3. Best Returns Data:")
+    best_returns = get_best_returns_data()
+    for item in best_returns:
+        print(item) 
+
+    # Test 4: Sector Diversification
+    print("\n4. Sector Diversification Comparison:")
+    sector_df = tool_sector_diversification_comparison()
+    if not sector_df.empty: 
+        print(sector_df)
+    else:        
+        print("Nessun dato disponibile.")       
+
+    # Test 5: Markowitz Optimization
+    print("\n5. Markowitz Optimization:")
+    optimization_result = tool_optimize_markowitz_target(0.10)
+    print(optimization_result)  
+    
+    # Test 6: Sentiment Analysis
+    print("\n6. Sentiment Analysis:")  
+    sentiment_result = tool_sentiment_analysis()
+    print(sentiment_result)
+    print("=== End of Tests ===")
