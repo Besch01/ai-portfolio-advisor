@@ -1,52 +1,47 @@
-import sqlite3
-import os
-import numpy as np
 import pandas as pd
+import numpy as np
 from scipy.optimize import minimize
 from datetime import datetime, timedelta
+import os
 import warnings
+
+# Importiamo SOLO le funzioni necessarie da db_tools
+# get_current_portfolio restituisce già una lista di dict, perfetta per Pandas
+from db_tools import get_current_portfolio, get_sector_allocation
+from api_tools import get_latest_close_prices, get_historical_prices
+
 from newsapi import NewsApiClient
 from textblob import TextBlob
-
-# Import local tools
-from db_tools import get_connection, get_sector_allocation
-from api_tools import get_latest_prices, get_historical_prices
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # --- CONFIGURAZIONE ---
-NEWS_API_KEY = 'f478f541562347d38b316ef6a2d19cac' 
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 
-
-# 1. COMPUTE RETURNS (Restituisce: dict)
+# 1. COMPUTE RETURNS
 def tool_compute_returns():
     """
-    Calcola il ROI del portafoglio.
-    Returns: dict {roi_pct, total_value, total_cost, currency}
+    Calcola il ROI del portafoglio incrociando i dati del DB con i prezzi API.
     """
-    conn = get_connection()
-    try:
-        portfolio = conn.execute("SELECT * FROM current_portfolio WHERE total_quantity > 0").fetchall()
-    except sqlite3.OperationalError:
-        conn.close()
-        return {} # Ritorna dizionario vuoto in caso di errore
-    conn.close()
+    # Recupera i dati puliti dal DB
+    portfolio = get_current_portfolio()
     
     if not portfolio: 
         return {}
 
     tickers = [p['ticker'] for p in portfolio]
-    current_prices = get_latest_prices(tickers)
+    current_prices = get_latest_close_prices(tickers)
       
     total_purchase_cost = 0.0
     total_current_value = 0.0
 
     for p in portfolio:
         ticker = p['ticker']
+        # Conversione in float per sicurezza matematica
         qty = float(p['total_quantity'])
         avg_price = float(p['avg_price'])
         
-        # Prezzo corrente o fallback sul prezzo medio
+        # Prezzo corrente o fallback sul prezzo medio se API fallisce
         current_price = current_prices.get(ticker, avg_price)
         
         if current_price:
@@ -54,11 +49,10 @@ def tool_compute_returns():
             total_current_value += qty * current_price
     
     if total_purchase_cost == 0: 
-        return {"error": "Total cost is zero"}
+        return {"error": "Il costo totale di acquisto è zero."}
     
     roi = ((total_current_value - total_purchase_cost) / total_purchase_cost) * 100
     
-    # Restituisce solo dati numerici puri
     return {
         "roi_percentage": round(roi, 2),
         "total_current_value": round(total_current_value, 2),
@@ -66,125 +60,83 @@ def tool_compute_returns():
         "currency": "USD"
     }
 
-# 2. RETURNS ANALYZER (Restituisce: list of dict)
-
-from api_tools import get_latest_prices
-
+# 2. BEST RETURNS
 def get_best_returns_data():
     """
-    Calcola il rendimento reale per ogni titolo nel portafoglio.
-    Incrocia i dati storici (db_tools) con i prezzi attuali (api_tools).
-
-    Returns:
-        list[dict]: Una lista di dizionari ordinata per rendimento decrescente.
-        Ogni dizionario contiene: ticker, name, sector, quantity, avg_price, 
-        current_price, return_pct, profit_loss.
+    Restituisce una lista di asset ordinati per performance.
     """
-    # 1. Recupera lo stato attuale del portafoglio dal Database
-    conn = get_connection()
-    try:
-        # Usiamo la vista 'current_portfolio' che ha già avg_price calcolato
-        query = "SELECT ticker, name, sector, total_quantity, avg_price FROM current_portfolio WHERE total_quantity > 0"
-        portfolio_rows = conn.execute(query).fetchall()
-    except Exception as e:
-        conn.close()
-        return [{"error": f"Errore DB: {str(e)}"}]
-    conn.close()
+    portfolio_rows = get_current_portfolio()
 
     if not portfolio_rows:
         return []
 
-    # 2. Ottieni i prezzi attuali (Batch Request ottimizzata)
-    # Invece di fare una chiamata per ogni titolo, le facciamo tutte insieme
     tickers = [row['ticker'] for row in portfolio_rows]
-    current_prices = get_latest_prices(tickers)
+    current_prices = get_latest_close_prices(tickers)
 
     results = []
 
-    # 3. Calcola i rendimenti per ogni titolo
     for row in portfolio_rows:
         ticker = row['ticker']
-        
-        # Casting esplicito per garantire i tipi di dato richiesti
         quantity = float(row['total_quantity'])
         avg_price = float(row['avg_price'])
         
-        # Recupera prezzo corrente (o usa avg_price se l'API fallisce per evitare crash)
-        current_price = current_prices.get(ticker)
-        
-        if current_price is None:
-            current_price = avg_price # Fallback neutro
-        
+        current_price = current_prices.get(ticker, avg_price)
+        if current_price is None: current_price = avg_price
         current_price = float(current_price)
 
-        # Calcolo matematico
         invested_value = quantity * avg_price
         current_value = quantity * current_price
-        
         profit_loss = current_value - invested_value
         
-        # Evitiamo divisioni per zero
-        if avg_price > 0:
-            return_pct = ((current_price - avg_price) / avg_price) * 100
-        else:
-            return_pct = 0.0
+        return_pct = ((current_price - avg_price) / avg_price) * 100 if avg_price > 0 else 0.0
 
-        # Creazione del dizionario dati pulito
-        entry = {
+        results.append({
             "ticker": ticker,
             "name": row['name'],
             "sector": row['sector'],
-            "quantity": int(quantity),             # int
-            "avg_purchase_price": round(avg_price, 2), # float
-            "current_market_price": round(current_price, 2), # float
-            "return_percentage": round(return_pct, 2), # float
-            "profit_loss_usd": round(profit_loss, 2)   # float
-        }
-        
-        results.append(entry)
+            "quantity": int(quantity),
+            "avg_purchase_price": round(avg_price, 2),
+            "current_market_price": round(current_price, 2),
+            "return_percentage": round(return_pct, 2),
+            "profit_loss_usd": round(profit_loss, 2)
+        })
 
-    # 4. Ordina per rendimento percentuale decrescente (dal migliore al peggiore)
+    # Ordina dal migliore al peggiore
     results.sort(key=lambda x: x['return_percentage'], reverse=True)
-
     return results
 
-
-# 3. SECTOR DIVERSIFICATION (Restituisce: pandas.DataFrame)
+# 3. SECTOR DIVERSIFICATION
 def tool_sector_diversification_comparison():
     """
-    Confronta allocazione iniziale vs attuale.
-    Returns: pandas.DataFrame
+    Confronta allocazione iniziale (Costo) vs Attuale (Mercato).
+    Restituisce un DataFrame Pandas.
     """
-    conn = get_connection()
+    # 1. Allocazione Iniziale (dal DB - usa invested_value)
+    initial_allocation = get_sector_allocation()
     
-    try:
-        initial_allocation = get_sector_allocation() # Restituisce lista di tuple
-    except Exception:
-        conn.close()
-        return pd.DataFrame() # DataFrame vuoto in caso di errore
-        
-    initial_dict = {sector: perc for sector, perc in initial_allocation}
+    # 2. Allocazione Corrente (dal DB + API - Valore Mercato)
+    # Riusiamo get_current_portfolio perché contiene già ticker, sector e quantity!
+    portfolio_data = get_current_portfolio()
 
-    query = """
-    SELECT ticker, sector, SUM(quantity) as total_qty 
-    FROM transactions GROUP BY ticker, sector HAVING total_qty > 0
-    """
-    df_portfolio = pd.read_sql_query(query, conn)
-    conn.close()
-
-    if df_portfolio.empty: 
+    if not portfolio_data: 
         return pd.DataFrame()
 
-    tickers = df_portfolio['ticker'].tolist()
-    current_prices = get_latest_prices(tickers)
+    initial_dict = {sector: perc for sector, perc in initial_allocation}
     
+    # Convertiamo la lista di dict in DataFrame
+    df_portfolio = pd.DataFrame(portfolio_data)
+    
+    tickers = df_portfolio['ticker'].tolist()
+    current_prices = get_latest_close_prices(tickers)
+    
+    # Mappiamo i prezzi e calcoliamo il valore attuale
     df_portfolio['current_price'] = df_portfolio['ticker'].map(current_prices).fillna(0)
-    df_portfolio['current_value'] = df_portfolio['total_qty'] * df_portfolio['current_price']
+    df_portfolio['current_value'] = df_portfolio['total_quantity'] * df_portfolio['current_price']
 
+    # Raggruppamento per settore
     current_sector_values = df_portfolio.groupby('sector')['current_value'].sum()
     total_market_value = current_sector_values.sum()
     
-    # Costruiamo i dati per il DataFrame finale
     results_data = []
     all_sectors = set(initial_dict.keys()).union(set(current_sector_values.index))
 
@@ -202,33 +154,21 @@ def tool_sector_diversification_comparison():
             "drift_pct": round(drift, 2)
         })
 
-    # Restituisce un DataFrame pulito
     return pd.DataFrame(results_data)
 
-# 4. MARKOWITZ OPTIMIZATION (Restituisce: dict)
+# 4. MARKOWITZ OPTIMIZATION
 def tool_optimize_markowitz_target(target_return_annualized=0.10):
-    """
-    Ottimizzazione portafoglio.
-    Returns: dict {volatility, weights, status}
-    """
-    conn = get_connection()
-    try:
-        rows = conn.execute("SELECT ticker FROM current_portfolio WHERE total_quantity > 0").fetchall()
-        tickers = [row['ticker'] for row in rows]
-    except Exception:
-        conn.close()
-        return {"error": "Database error"}
-    conn.close()
+    rows = get_current_portfolio()
+    tickers = [row['ticker'] for row in rows]
 
     if len(tickers) < 2: 
-        return {"error": "Not enough assets"}
+        return {"error": "Servono almeno 2 asset per l'ottimizzazione."}
 
     end_date = datetime.now().strftime('%Y-%m-%d')
     start_date = (datetime.now() - timedelta(days=365)).strftime('%Y-%m-%d')
     
     data = get_historical_prices(tickers, start_date, end_date)
-    if data.empty:
-        return {"error": "No historical data"}
+    if data.empty: return {"error": "Dati storici non disponibili."}
     
     daily_returns = data.pct_change().dropna()
     expected_returns = daily_returns.mean() * 252
@@ -236,12 +176,8 @@ def tool_optimize_markowitz_target(target_return_annualized=0.10):
 
     max_possible = expected_returns.max()
     if target_return_annualized > max_possible:
-        return {
-            "error": "Target too high", 
-            "max_possible_return": round(max_possible, 4)
-        }
+        return {"error": "Target troppo alto", "max_possible_return": round(max_possible, 4)}
 
-    # Ottimizzazione matematica
     def portfolio_variance(weights):
         return np.dot(weights.T, np.dot(cov_matrix, weights))
 
@@ -255,19 +191,12 @@ def tool_optimize_markowitz_target(target_return_annualized=0.10):
     try:
         optimized = minimize(portfolio_variance, init_guess, method='SLSQP', bounds=bounds, constraints=cons)
     except Exception:
-        return {"error": "Optimization failed"}
+        return {"error": "Ottimizzazione matematica fallita."}
 
-    if not optimized.success:
-        return {"error": "Solver failed"}
+    if not optimized.success: return {"error": "Il solver non ha trovato soluzioni."}
 
     volatility = np.sqrt(optimized.fun)
-    
-    # Creazione dizionario pesi (filtro < 0.1%)
-    weights_dict = {}
-    for i, ticker in enumerate(tickers):
-        w = optimized.x[i]
-        if w > 0.001: 
-            weights_dict[ticker] = round(w, 4)
+    weights_dict = {tickers[i]: round(optimized.x[i], 4) for i in range(len(tickers)) if optimized.x[i] > 0.001}
 
     return {
         "target_return": target_return_annualized,
@@ -275,26 +204,20 @@ def tool_optimize_markowitz_target(target_return_annualized=0.10):
         "optimized_weights": weights_dict
     }
 
-# 5. SENTIMENT ANALYSIS (Restituisce: dict)
+# 5. SENTIMENT ANALYSIS
 def tool_sentiment_analysis(ticker=None):
-    """
-    Analisi sentiment.
-    Returns: dict {ticker, score, label, articles_list}
-    """
+    # Se non c'è ticker, prendiamo il più grande nel portafoglio
     if not ticker:
-        conn = get_connection()
-        try:
-            row = conn.execute("SELECT ticker FROM current_portfolio ORDER BY total_quantity DESC LIMIT 1").fetchone()
-            ticker = row['ticker'] if row else None
-        except Exception:
-            return {"error": "Db error"}
-        conn.close()
-        
-    if not ticker:
-        return {"error": "No ticker found"}
+        portfolio = get_current_portfolio()
+        if portfolio:
+            # Ordiniamo la lista in Python
+            top_asset = sorted(portfolio, key=lambda x: x['total_quantity'], reverse=True)[0]
+            ticker = top_asset['ticker']
+        else:
+            return {"error": "Nessun ticker trovato o portafoglio vuoto."}
 
-    if not NEWS_API_KEY or 'YOUR_API_KEY' in NEWS_API_KEY:
-        return {"error": "Invalid API Key"}
+    if not NEWS_API_KEY:
+        return {"error": "API Key mancante. Esegui: export NEWS_API_KEY='tua_chiave' nel terminale."}
 
     try:
         newsapi = NewsApiClient(api_key=NEWS_API_KEY)
@@ -311,12 +234,7 @@ def tool_sentiment_analysis(ticker=None):
             title = art['title']
             score = TextBlob(title).sentiment.polarity
             scores.append(score)
-            
-            articles_data.append({
-                "title": title,
-                "score": round(score, 2),
-                "source": art['source']['name']
-            })
+            articles_data.append({"title": title, "score": round(score, 2), "source": art['source']['name']})
 
         avg_score = sum(scores) / len(scores)
         label = "BULLISH" if avg_score > 0.1 else "BEARISH" if avg_score < -0.1 else "NEUTRAL"
@@ -330,32 +248,4 @@ def tool_sentiment_analysis(ticker=None):
         }
 
     except Exception as e:
-        return {"error": str(e)}
-
-# AGENT TOOLS DICTIONARY
-agent_tools = {
-    "returns_analyzer": tool_compute_returns,
-    "best_returns_data": get_best_returns_data,
-    "diversification_expert": tool_sector_diversification_comparison,
-    "portfolio_optimizer": tool_optimize_markowitz_target,
-    "market_sentiment": tool_sentiment_analysis
-}
-
-if __name__ == "__main__":
-    # Test rapido per verificare i tipi di dato restituiti
-    print("--- 1. Returns (Dict) ---")
-    print(tool_compute_returns())
-
-    print("\n--- 2. Best Returns (Dict) ---")
-    print(get_best_returns_data())
-
-    print("\n--- 3. Diversification (DataFrame) ---")
-    df = tool_sector_diversification_comparison()
-    print(df) # Stampa il dataframe puro
-    # print(df.to_dict(orient='records')) # Se vuoi vederlo come lista di dizionari
-    
-    print("\n--- 4. Markowitz (Dict) ---")
-    print(tool_optimize_markowitz_target(0.10))
-    
-    print("\n--- 5. Sentiment (Dict) ---")
-    print(tool_sentiment_analysis())
+        return {"error": f"Errore API News: {str(e)}"}
