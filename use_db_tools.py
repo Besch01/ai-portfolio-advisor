@@ -1,5 +1,6 @@
 """
-Test file for database_tools
+Test file for db_tools
+Checks all main functions and prints results.
 """
 
 from db_tools import (
@@ -10,100 +11,88 @@ from db_tools import (
     get_transactions_by_ticker,
     get_transactions_by_date,
     get_portfolio_by_sector,
-    update_transaction,
-    get_portfolio_summary,
     get_sector_allocation,
+    get_portfolio_summary,
+    update_transaction,
     delete_transaction
 )
-from datetime import date
 
-# ===============================
-# 1. Inserimento transazioni di test
-# ===============================
-print("\n=== Inserimento transazioni di test ===")
-tx1 = {
-    "date": date.today().isoformat(),
-    "ticker": "AAPL",
-    "name": "Apple Inc.",
-    "sector": "Technology",
-    "quantity": 10,
-    "price": 150.0
-}
+# --- Inserimento transazioni di test ---
+print("=== Inserimento transazioni di test ===")
+tx1 = {"date": "2026-01-08", "ticker": "AAPL", "name": "Apple Inc.", "sector": "Technology", "quantity": 10, "price": 150.0}
+tx2 = {"date": "2026-01-08", "ticker": "MSFT", "name": "Microsoft Corp.", "sector": "Technology", "quantity": 5, "price": 300.0}
 
-tx2 = {
-    "date": date.today().isoformat(),
-    "ticker": "MSFT",
-    "name": "Microsoft Corp.",
-    "sector": "Technology",
-    "quantity": 5,
-    "price": 300.0
-}
+res1 = insert_transaction(tx1)
+res2 = insert_transaction(tx2)
 
-insert_transaction(tx1)
-insert_transaction(tx2)
-print("Transazioni inserite.")
+print(res1)
+print(res2)
 
-# ===============================
-# 2. Portfolio corrente
-# ===============================
+
+# --- Portfolio corrente ---
 print("\n=== Portfolio corrente ===")
 portfolio = get_current_portfolio()
-for row in portfolio:
-    print(dict(row))  # row_factory sqlite3.Row permette di convertire in dict
+print(portfolio)
 
-# ===============================
-# 3. Portfolio storico fino a oggi
-# ===============================
+
+# --- Portfolio storico fino a oggi ---
 print("\n=== Portfolio storico fino a oggi ===")
-historical = get_historical_portfolio(date.today().isoformat())
-for row in historical:
-    print(dict(row))
+historical = get_historical_portfolio("2026-01-08")
+print(historical)
 
-# ===============================
-# 4. Miglior prezzo medio
-# ===============================
+
+# --- Titolo con prezzo medio più alto ---
 print("\n=== Titolo con prezzo medio più alto ===")
 best_avg = get_best_avg_price()
-print(dict(best_avg) if best_avg else "Nessun dato")
+print(best_avg)
 
-# ===============================
-# 5. Transazioni per ticker
-# ===============================
+
+# --- Transazioni per AAPL ---
 print("\n=== Transazioni per AAPL ===")
-aapl_tx = get_transactions_by_ticker("AAPL")
-for row in aapl_tx:
-    print(dict(row))
+tx_aapl = get_transactions_by_ticker("AAPL")
+print(tx_aapl)
 
-# ===============================
-# 6. Aggiornamento transazione
-# ===============================
-if aapl_tx:
-    last_aapl_id = aapl_tx[-1]["id"]
-    print(f"\n=== Aggiornamento ultima transazione AAPL, ID {last_aapl_id} ===")
-    update_transaction(last_aapl_id, quantity=20)
-    print("Aggiornamento completato.")
-    # Verifica
-    updated = get_transactions_by_ticker("AAPL")[-1]
-    print(dict(updated))
+# --- Aggiornamento ultima transazione AAPL ---
+if tx_aapl["status"] == "ok" and tx_aapl["data"]:
+    last_tx_id = tx_aapl["data"][-1]["id"]
+    print(f"\n=== Update ultima transazione AAPL, ID {last_tx_id} ===")
+    update_res = update_transaction(last_tx_id, quantity=20, price=150.0)
+    print(update_res)
+else:
+    print("Nessuna transazione AAPL trovata")
 
-# ===============================
-# 7. Riepilogo portfolio
-# ===============================
+
+# --- Summary del portfolio ---
 print("\n=== Summary del portfolio ===")
 summary = get_portfolio_summary()
-print(dict(summary) if summary else "Nessun dato")
+print(summary)
 
-# ===============================
-# 8. Allocazione per settore
-# ===============================
+
+# --- Allocazione per settore ---
 print("\n=== Allocazione per settore ===")
-allocation = get_sector_allocation()
-for row in allocation:
-    print(row)
+sector_alloc = get_sector_allocation()
+print(sector_alloc)
 
-# ===============================
-# 9. Eliminazione transazione
-# ===============================
+
+# --- Portfolio per settore (totale investito) ---
+print("\n=== Portfolio per settore (totale investito) ===")
+by_sector = get_portfolio_by_sector()
+print(by_sector)
+
+
+# --- Transazioni per data ---
+print("\n=== Transazioni tra 2026-01-01 e 2026-01-08 ===")
+tx_date = get_transactions_by_date("2026-01-01", "2026-01-08")
+print(tx_date)
+
+
+# --- Test delete transaction (ultima inserita) ---
 print("\n=== Test delete transaction (ultima inserita) ===")
-msg = delete_transaction()  # eliminerà ultima transazione con conferma utente
-print(msg)
+last_tx = get_transactions_by_ticker("MSFT")
+if last_tx["status"] == "ok" and last_tx["data"]:
+    last_tx_id = last_tx["data"][-1]["id"]
+    del_res = delete_transaction(last_tx_id, confirm=True)
+    print(del_res)
+else:
+    print("Nessuna transazione MSFT trovata")
+

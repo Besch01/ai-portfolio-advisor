@@ -1,75 +1,94 @@
 """
 Database tools for portfolio management
-
 Functions to manage transactions and portfolio data
-
 """
 
 import sqlite3
 import os
-    
-    
+import logging
+
+# Logging configurabile
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 def get_connection():
-    """
-    It returns a connection to the database 'portfolio_manager.db'.
-    The connession is centralized so that all the functions use the same logic to open the db.
-    If we need to change the path, we modify only this function.
-    (In the use, The connection must be closed by 'conn.close()'.)
-    """
-    # find the path
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    db_path = os.path.join(BASE_DIR, "portfolio_manager.db")
-    
-    # create the connection SQLite
-    conn = sqlite3.connect(db_path)
-    
-    # allows the access through column' name (essential for analysis_tools)
-    conn.row_factory = sqlite3.Row 
-    return conn
+    """Returns a connection to the SQLite database with row access via dict."""
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        db_path = os.path.join(base_dir, "portfolio_manager.db")
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+    except sqlite3.Error as e:
+        logger.error(f"DB connection error: {e}")
+        return None
 
+
+# --- Helper interni ---
+
+def _dict_from_cursor(cur):
+    """Converts cursor.fetchall() into list of dicts."""
+    return [dict(row) for row in cur.fetchall()]
+
+
+def _dict_from_row(row):
+    """Converts single row to dict or returns None."""
+    return dict(row) if row else None
+
+
+# --- Funzioni principali ---
 
 def insert_transaction(transaction_data):
     """
-    Insert a new transaction in the database using a dict from get_market_transaction.
-
-    Parameters:
-    - transaction_data (dict): keys = date, ticker, name, sector, quantity, price
+    Insert a new transaction.
+    Required fields: date, ticker, quantity, price
     """
+    required_fields = ["date", "ticker", "quantity", "price"]
+    for field in required_fields:
+        if field not in transaction_data:
+            return {"status": "error", "message": f"Missing field {field}"}
+
     conn = get_connection()
+    if not conn:
+        return {"status": "error", "message": "DB connection failed"}
+
     try:
         cur = conn.cursor()
-        cur.execute(
-            """
+        cur.execute("""
             INSERT INTO transactions (date, ticker, name, sector, quantity, price)
             VALUES (:date, :ticker, :name, :sector, :quantity, :price)
-            """,
-            transaction_data
-        )
+        """, transaction_data)
         conn.commit()
+        logger.info(f"Inserted transaction for {transaction_data['ticker']}")
+        return {"status": "ok", "data": {"transaction_id": cur.lastrowid}}
+    except sqlite3.Error as e:
+        return {"status": "error", "message": str(e)}
     finally:
         conn.close()
 
 
 def get_current_portfolio():
-    """
-     It returns the current portfolio, showing: ticker, name, sector, total quantity, average price and invested value.
-    """
     conn = get_connection()
+    if not conn:
+        return {"status": "error", "data": None}
+
     try:
         cur = conn.cursor()
         cur.execute("SELECT * FROM current_portfolio")
-        return cur.fetchall()
+        data = _dict_from_cursor(cur)
+        return {"status": "ok", "data": data} if data else {"status": "empty", "data": []}
+    except sqlite3.Error as e:
+        return {"status": "error", "data": None, "message": str(e)}
     finally:
         conn.close()
 
 
 def get_historical_portfolio(date):
-    """
-    Returns the portfolio until the given date.
-    Calculates total quantity and weighted average price.
-    """
     conn = get_connection()
+    if not conn:
+        return {"status": "error", "data": None}
+
     try:
         cur = conn.cursor()
         cur.execute("""
@@ -84,22 +103,25 @@ def get_historical_portfolio(date):
                     SUM(quantity) *
                     (SUM(CASE WHEN quantity > 0 THEN quantity * price ELSE 0 END)
                     / NULLIF(SUM(CASE WHEN quantity > 0 THEN quantity ELSE 0 END), 0)), 2
-                ) AS invested_value
+                ) AS total_invested
             FROM transactions
             WHERE date <= ?
             GROUP BY ticker
             HAVING total_quantity > 0
         """, (date,))
-        return cur.fetchall()
+        data = _dict_from_cursor(cur)
+        return {"status": "ok", "data": data} if data else {"status": "empty", "data": []}
+    except sqlite3.Error as e:
+        return {"status": "error", "data": None, "message": str(e)}
     finally:
         conn.close()
- 
-        
+
+
 def get_best_avg_price():
-    """
-    Returns the title with the highest average purchase price from the current portfolio.
-    """
     conn = get_connection()
+    if not conn:
+        return {"status": "error", "data": None}
+
     try:
         cur = conn.cursor()
         cur.execute("""
@@ -108,106 +130,93 @@ def get_best_avg_price():
             ORDER BY avg_price DESC
             LIMIT 1
         """)
-        return cur.fetchone()
+        row = cur.fetchone()
+        data = _dict_from_row(row)
+        return {"status": "ok", "data": data} if data else {"status": "empty", "data": None}
+    except sqlite3.Error as e:
+        return {"status": "error", "data": None, "message": str(e)}
     finally:
         conn.close()
 
 
 def get_transactions_by_ticker(ticker):
-    """
-    Returns all the transactions of a specific ticker.
-    """
     conn = get_connection()
+    if not conn:
+        return {"status": "error", "data": []}
+
     try:
         cur = conn.cursor()
         cur.execute("SELECT * FROM transactions WHERE ticker = ?", (ticker,))
-        return cur.fetchall()
+        data = _dict_from_cursor(cur)
+        return {"status": "ok", "data": data} if data else {"status": "empty", "data": []}
+    except sqlite3.Error as e:
+        return {"status": "error", "data": [], "message": str(e)}
     finally:
         conn.close()
 
 
-def get_transactions_by_date(start_date, end_date):
-    """
-    Returns all transactions within a date interval.
-    """
+def get_transactions_by_date(start_date, end_date, limit=None):
     conn = get_connection()
+    if not conn:
+        return {"status": "error", "data": []}
+
     try:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT * FROM transactions
-            WHERE date BETWEEN ? AND ?
-        """, (start_date, end_date))
-        return cur.fetchall()
+        sql = "SELECT * FROM transactions WHERE date BETWEEN ? AND ?"
+        params = [start_date, end_date]
+        if limit:
+            sql += " LIMIT ?"
+            params.append(limit)
+        cur.execute(sql, tuple(params))
+        data = _dict_from_cursor(cur)
+        return {"status": "ok", "data": data} if data else {"status": "empty", "data": []}
+    except sqlite3.Error as e:
+        return {"status": "error", "data": [], "message": str(e)}
     finally:
         conn.close()
 
 
-def get_portfolio_by_sector():
-    """
-    Returns the total invested value per sector from the current portfolio.
-    """
+def delete_transaction(transaction_id=None, confirm=False):
     conn = get_connection()
+    if not conn:
+        return {"status": "error", "data": None}
+
     try:
         cur = conn.cursor()
-        cur.execute("""
-            SELECT sector, SUM(invested_value) AS total_invested
-            FROM current_portfolio
-            GROUP BY sector
-        """)
-        return cur.fetchall()
+        # Se non specificato, prendi l'ultima
+        if transaction_id is None:
+            cur.execute("SELECT * FROM transactions ORDER BY id DESC LIMIT 1")
+        else:
+            cur.execute("SELECT * FROM transactions WHERE id = ?", (transaction_id,))
+        row = cur.fetchone()
+        if not row:
+            return {"status": "not_found", "data": None}
+
+        transaction = dict(row)
+        transaction_id = transaction["id"]
+
+        if not confirm:
+            return {"status": "confirmation_required", "data": transaction}
+
+        cur.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
+        conn.commit()
+        return {"status": "deleted", "data": {"transaction_id": transaction_id}}
+    except sqlite3.Error as e:
+        return {"status": "error", "data": None, "message": str(e)}
     finally:
         conn.close()
-
-def delete_transaction(transaction_id=None):
-    """
-    Deletes a transaction from the database with user confirmation.
-    
-    Parameters:
-        - transaction_id (int, optional): ID of the transaction to delete.
-          If None, deletes the last transaction.
-          
-    Returns:
-        - str: message about the result
-    """
-    conn = get_connection()
-    cur = conn.cursor()
-
-    # If no ID, take the last transaction
-    if transaction_id is None:
-        cur.execute("SELECT id, date, ticker, quantity FROM transactions ORDER BY id DESC LIMIT 1")
-        transaction = cur.fetchone()
-        if transaction is None:
-            conn.close()
-            return "No transactions to delete."
-        transaction_id = transaction[0]
-    else:
-        cur.execute("SELECT id, date, ticker, quantity FROM transactions WHERE id = ?", (transaction_id,))
-        transaction = cur.fetchone()
-        if transaction is None:
-            conn.close()
-            return f"No transaction with ID {transaction_id}."
-
-    # Show the details of the transaction and ask for confirm
-    print(f"Selected transaction: ID {transaction[0]}, Date: {transaction[1]}, Ticker: {transaction[2]}, Quantity: {transaction[3]}")
-    confirm = input(f"Are you sure to delete this transaction? (y/n): ").strip().lower()
-    if confirm != 'y':
-        conn.close()
-        return "The user stopped the deleting."
-
-    # Delete the transaction
-    cur.execute("DELETE FROM transactions WHERE id = ?", (transaction_id,))
-    conn.commit()
-    conn.close()
-    
-    return f"Transaction ID {transaction_id} deleted successfully."
 
 
 def update_transaction(transaction_id, **kwargs):
-    """
-    Update fields of a transaction.
-    kwargs: date, ticker, name, sector, quantity, price
-    """
+    required_fields = ["date", "ticker", "quantity", "price"]
+    for field in required_fields:
+        if field in kwargs and kwargs[field] is None:
+            return {"status": "error", "message": f"Field {field} cannot be None"}
+
     conn = get_connection()
+    if not conn:
+        return {"status": "error", "data": None}
+
     try:
         cur = conn.cursor()
         fields = []
@@ -219,15 +228,21 @@ def update_transaction(transaction_id, **kwargs):
         sql = f"UPDATE transactions SET {', '.join(fields)} WHERE id = ?"
         cur.execute(sql, values)
         conn.commit()
+        return {"status": "ok", "data": {"transaction_id": transaction_id}}
+    except sqlite3.Error as e:
+        return {"status": "error", "data": None, "message": str(e)}
     finally:
         conn.close()
 
-
 def get_sector_allocation():
     """
-    Returns percentage of investments per sector.
+    Returns the total invested value per sector from the current portfolio.
+    No percentages are calculated here; percentages can be computed in analysis_tools.
     """
     conn = get_connection()
+    if not conn:
+        return {"status": "error", "data": []}
+
     try:
         cur = conn.cursor()
         cur.execute("""
@@ -235,28 +250,33 @@ def get_sector_allocation():
             FROM current_portfolio
             GROUP BY sector
         """)
-        data = cur.fetchall()
-        total = sum(row[1] for row in data)
-        allocation = [(row[0], round(row[1]/total*100, 2)) for row in data]
-        return allocation
+        data = _dict_from_cursor(cur)
+        return {"status": "ok", "data": data} if data else {"status": "empty", "data": []}
+    except sqlite3.Error as e:
+        return {"status": "error", "data": [], "message": str(e)}
     finally:
         conn.close()
 
 
 def get_portfolio_summary():
-    """
-    Returns total quantity, total invested value, and weighted average price of the portfolio.
-    """
     conn = get_connection()
+    if not conn:
+        return {"status": "error", "data": None}
+
     try:
         cur = conn.cursor()
         cur.execute("""
             SELECT 
                 SUM(total_quantity) AS total_quantity,
-                ROUND(SUM(invested_value), 2) AS total_invested,
-                ROUND(SUM(total_quantity * avg_price) / NULLIF(SUM(total_quantity), 0), 2) AS weighted_avg_price
+                ROUND(SUM(invested_value),2) AS total_invested,
+                ROUND(SUM(total_quantity * avg_price) / NULLIF(SUM(total_quantity),0),2) AS avg_price
             FROM current_portfolio
         """)
-        return cur.fetchone()
+        row = cur.fetchone()
+        data = dict(row) if row else None
+        return {"status": "ok", "data": data} if data else {"status": "empty", "data": None}
+    except sqlite3.Error as e:
+        return {"status": "error", "data": None, "message": str(e)}
     finally:
         conn.close()
+
