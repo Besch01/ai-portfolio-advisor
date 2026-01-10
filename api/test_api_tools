@@ -1,7 +1,7 @@
 # test_market_price_dry.py
 from datetime import date
 import yfinance as yf
-from api_tools import get_market_transaction
+from api_tools import get_market_transaction_data
 
 # Lista dei ticker da testare
 tickers = ["AAPL", "MSFT", "GOOGL"]
@@ -11,11 +11,36 @@ print("=== Test get_market_transaction (dry run, senza inserimento) ===\n")
 for ticker in tickers:
     try:
         # Ottieni i dati dal mercato
-        transaction_data = get_market_transaction(
+        transaction_data = get_market_transaction_data(
             ticker=ticker,
             quantity=10  # quantità fittizia
         )
         print(f"Dati ottenuti per {ticker}:")
+        for k, v in transaction_data.items():
+            print(f"  {k}: {v}")
+        print("-" * 40)
+
+    except Exception as e:
+        print(f"Errore per {ticker}: {e}\n")
+
+print("\n=== Test completato (nessun dato inserito nel DB) ===")
+
+
+# Lista dei ticker aggiornata con nuovi titoli per il test
+# TSLA: Tesla (Automotive), BTC-USD: Bitcoin (Crypto), RACE: Ferrari (Luxury/Automotive)
+tickers = ["TSLA", "BTC-USD", "RACE"]
+
+print("=== Test get_market_transaction (dry run, senza inserimento) ===\n")
+
+for ticker in tickers:
+    try:
+        # Ottieni i dati dal mercato (chiama la funzione che usa yfinance)
+        transaction_data = get_market_transaction_data(
+            ticker=ticker,
+            quantity=10  # quantità fittizia
+        )
+        
+        print(f"Dati ottenuti in tempo reale per {ticker}:")
         for k, v in transaction_data.items():
             print(f"  {k}: {v}")
         print("-" * 40)
