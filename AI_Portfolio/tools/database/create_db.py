@@ -72,7 +72,7 @@ cur.execute("""
 CREATE VIEW IF NOT EXISTS current_portfolio AS
 SELECT
     ticker,
-    name,
+    MAX(name) as name, 
     sector,
     SUM(quantity) AS total_quantity,
     ROUND(
@@ -89,11 +89,12 @@ SELECT
         2
     ) AS invested_value
 FROM transactions
-GROUP BY ticker, name, sector
+GROUP BY ticker
 HAVING total_quantity > 0
 """)
 
 conn.commit()
+
 
 # 5. Check inserted data
 print("Transactions in database:\n")

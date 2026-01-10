@@ -1,52 +1,46 @@
+
 # main.py
+from agent.agent import Agent
+from agent.llm_client import LLMClient
+import os
 
-from tools.visualization.visualization_tools import plot_sector_allocation  # esempio
+def main():
+    # Inizializziamo il "cervello" (Fake LLM) e l'"orchestratore" (Agent)
+    llm_client = LLMClient()
+    portfolio_agent = Agent(llm_client)
 
-# 1️⃣ Tool registry (cuore dell'agent)
-TOOLS = {
-    "plot_sector_allocation": plot_sector_allocation
-}
-
-# 2️⃣ Fake LLM response (simula JSON dell'LLM)
-def fake_llm_response(user_input: str) -> dict:
-    """
-    Simula la risposta strutturata di un LLM.
-    """
-    print(f"\n[LLM INPUT]: {user_input}")
-
-    # Hardcoded per il test
-    return {
-        "tool": "plot_sector_allocation",
-        "args": {
-            "portfolio_id": 1
-        }
-    }
-
-# 3️⃣ Agent executor
-def run_agent(user_input: str):
-    response = fake_llm_response(user_input)
-
-    tool_name = response.get("tool")
-    args = response.get("args", {})
-
-    if tool_name not in TOOLS:
-        raise ValueError(f"Tool '{tool_name}' not found")
-
-    print(f"[AGENT]: Calling tool '{tool_name}' with args {args}")
-
-    result = TOOLS[tool_name](**args)
-
-    print(f"[RESULT]: {result}")
-
-# 4️⃣ Entry point
-if __name__ == "__main__":
-    print("=== AI Portfolio Advisor (TEST MODE) ===")
+    print("=== AI PORTFOLIO ADVISOR - PRONTO ===")
+    print("Scrivi un comando (es. 'Mostra portafoglio' o 'Compra 10 NVDA')")
+    print("Scrivi 'esci' per chiudere.\n")
 
     while True:
-        user_input = input("\nUser > ")
-
-        if user_input.lower() in {"exit", "quit"}:
-            print("Bye 👋")
+        user_input = input("Tu: ")
+        
+        if user_input.lower() in ["esci", "quit", "exit"]:
+            print("Chiusura assistente. Arrivederci!")
             break
 
-        run_agent(user_input)
+        # L'agente analizza e risponde
+        try:
+            response = portfolio_agent.run(user_input)
+            
+            # Se la risposta è un dizionario (es. i dati del DB), la stampiamo bene
+            if isinstance(response, dict):
+                print(f"\nAgente: Ecco i dati richiesti:")
+                # Se è il portafoglio, cicliamo i dati
+                if 'data' in response and isinstance(response['data'], list):
+                    for item in response['data']:
+                        print(f"- {item['ticker']}: {item['name']} | Quantità: {item['total_quantity']} | Settore: {item['sector']}")
+                else:
+                    print(response)
+            else:
+                # Se è una risposta testuale semplice (il "thought")
+                print(f"\nAgente: {response}")
+                
+        except Exception as e:
+            print(f"\n[ERRORE]: {e}")
+        
+        print("-" * 30)
+
+if __name__ == "__main__":
+    main()

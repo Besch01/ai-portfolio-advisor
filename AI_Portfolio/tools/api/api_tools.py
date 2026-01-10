@@ -113,4 +113,25 @@ def get_market_transaction_data(ticker, quantity, name=None, sector=None):
         "price": market_price
     }
 
+from tools.database.db_tools import insert_transaction
+
+def buy_stock_flow(ticker, quantity):
+    """
+    Tool combinato: 
+    1. Scarica i dati da Yahoo Finance
+    2. Li salva nel Database
+    """
+    # 1. Recupero dati dall'API
+    print(f"[*] Eseguendo acquisto completo per {ticker}...")
+    market_data = get_market_transaction_data(ticker, quantity)
+    
+    # 2. Salvataggio nel DB
+    if market_data:
+        db_res = insert_transaction(market_data)
+        if db_res["status"] == "ok":
+            return {
+                "message": f"Acquisto completato! Ho aggiunto {quantity} azioni di {market_data['name']} al database.",
+                "data": market_data
+            }
+    return {"error": "Qualcosa è andato storto durante l'acquisto."}
 

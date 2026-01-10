@@ -24,9 +24,9 @@ from tools.database.db_tools import (
 )
 from tools.api.api_tools import (
     get_historical_prices,
-    get_latest_prices,
-    portfolio_value_over_time,
-    portfolio_current_vs_purchase
+    get_latest_close_prices,
+    #portfolio_value_over_time,
+    #portfolio_current_vs_purchase
 )
 
 
