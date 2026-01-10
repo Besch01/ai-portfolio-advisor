@@ -286,40 +286,28 @@ def tool_sentiment_analysis(ticker=None):
 # ============================
 
 # 6. PORTFOLIO VALUE OVER TIME
-def portfolio_value_over_time(start_date, end_date):
+def portfolio_value_over_time(transactions_df, price_df):
     """
-    Calcola il valore giornaliero del portafoglio a partire dallo stato attuale.
-    Utilizza i prezzi storici per i ticker presenti nel portfolio.
-    Returns: pandas Series (index=date, values=USD)
-    """
-    portfolio = unwrap_db_response(get_current_portfolio())
-    if not portfolio:
-        return pd.Series(dtype=float)
-    
-    # DataFrame sintetico con ticker e quantità
-    # Usiamo 'total_quantity' come definito in db_tools
-    df = pd.DataFrame(portfolio)
-    if 'total_quantity' not in df.columns:
-        return pd.Series(dtype=float)
+    Calcola il valore giornaliero del portafoglio basandosi sulle transazioni storiche.
 
-    df = df[['ticker', 'total_quantity']].rename(columns={'total_quantity': 'quantity'})
-    
-    tickers = df['ticker'].unique().tolist()
-    if not tickers:
-        return pd.Series(dtype=float)
-    
-    # Prendi prezzi storici
-    price_df = get_historical_prices(tickers, start_date, end_date)
-    if price_df.empty:
-        return pd.Series(dtype=float)
-    
-    # Quantità giornaliera costante (stato corrente)
-    qty_df = pd.DataFrame(index=price_df.index, columns=tickers)
+    Parameters:
+        transactions_df (DataFrame): ['date','ticker','quantity']
+        price_df (DataFrame): index=dates, columns=tickers, valori=prezzi chiusura
+
+    Returns:
+        pandas Series: index=dates, values=portafoglio giornaliero
+    """
+    transactions_df['date'] = pd.to_datetime(transactions_df['date'])
+    all_dates = price_df.index
+    tickers = price_df.columns
+    qty_df = pd.DataFrame(0, index=all_dates, columns=tickers)
+
     for ticker in tickers:
-        qty_val = df.loc[df['ticker'] == ticker, 'quantity'].values[0]
-        qty_df[ticker] = qty_val
-    
-    # Valore giornaliero portfolio
+        df_t = transactions_df[transactions_df['ticker'] == ticker]
+        df_t = df_t.groupby('date')['quantity'].sum().cumsum()
+        df_t = df_t.reindex(all_dates, method='ffill').fillna(0)
+        qty_df[ticker] = df_t
+
     portfolio_values = (qty_df * price_df).sum(axis=1)
     return portfolio_values
 
