@@ -1,18 +1,16 @@
-"""
-API Tools for Portfolio Visualization
--------------------------------------
-Functions to retrieve historical and current stock prices for tickers
-in the portfolio, to use for plotting value over time, performance comparison,
-and advanced visualizations.
-"""
-
 # ============================
 # Imports
 # ============================
 import yfinance as yf
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import date
 
+"""
+API Tools for Portfolio Visualization
+-------------------------------------
+Functions to retrieve historical and current stock data for tickers.
+
+"""
 
 # -------------------------------
 # Get historical daily prices for a list of tickers
@@ -48,11 +46,10 @@ def get_historical_prices(tickers, start_date, end_date):
     
     return data
 
-
 # -------------------------------
 # Get the latest price for a list of tickers
 # -------------------------------
-def get_latest_prices(tickers):
+def get_latest_close_prices(tickers):
     """
     Get the latest available price (usually yesterday close) for each ticker.
 
@@ -73,76 +70,47 @@ def get_latest_prices(tickers):
     return latest_prices
 
 
-# -------------------------------
-# Generate portfolio value over time
-# -------------------------------
-def portfolio_value_over_time(transactions_df, price_df):
+"""
+API Tools for Portfolio Database
+
+"""
+
+def get_market_transaction_data(ticker, quantity, name=None, sector=None):
     """
-    Calculate daily portfolio value given transactions and price data.
+    Fetches current market price and metadata for a ticker.
 
     Parameters:
-        transactions_df (DataFrame):
-            columns = ['date','ticker','quantity']
-        price_df (DataFrame):
-            index = dates
-            columns = tickers
-            values = closing prices
+        - ticker (str)
+        - quantity (float): positive for buy, negative for sell
+        - name (str, optional)
+        - sector (str, optional)
 
     Returns:
-        pandas Series: index=dates, values=total portfolio value per day
+        dict: {date, ticker, name, sector, quantity, price}
     """
-    # Ensure date column is datetime
-    transactions_df['date'] = pd.to_datetime(transactions_df['date'])
+    stock = yf.Ticker(ticker)
+    hist = stock.history(period="5d")
     
-    # Create empty DataFrame for cumulative quantities per ticker per day
-    all_dates = price_df.index
-    tickers = price_df.columns
-    qty_df = pd.DataFrame(0, index=all_dates, columns=tickers)
+    if hist.empty:
+        raise ValueError(f"Market price not available for ticker {ticker}")
     
-    # Aggregate cumulative quantities
-    for ticker in tickers:
-        # Filter transactions for ticker
-        df_t = transactions_df[transactions_df['ticker'] == ticker]
-        # Sum cumulatively by date
-        df_t = df_t.groupby('date')['quantity'].sum().cumsum()
-        # Reindex to all_dates, forward-fill quantities
-        df_t = df_t.reindex(all_dates, method='ffill').fillna(0)
-        qty_df[ticker] = df_t
+    market_price = round(hist["Close"].iloc[-1], 2)
+    info = stock.info
+
+    if name is None:
+        name = info.get("shortName", ticker)
+    if sector is None:
+        sector = info.get("sector", "Unknown")
     
-    # Calculate daily portfolio value
-    portfolio_values = (qty_df * price_df).sum(axis=1)
-    return portfolio_values
+    transaction_date = date.today().isoformat()
+    
+    return {
+        "date": transaction_date,
+        "ticker": ticker,
+        "name": name,
+        "sector": sector,
+        "quantity": quantity,
+        "price": market_price
+    }
 
 
-# -------------------------------
-# Generate portfolio current vs purchase value
-# -------------------------------
-def portfolio_current_vs_purchase(transactions_df, latest_prices):
-    """
-    Calculate for each ticker the value at average purchase price and
-    the value at latest price.
-
-    Parameters:
-        transactions_df (DataFrame):
-            columns = ['ticker','quantity','price']
-        latest_prices (dict): {ticker: latest_price}
-
-    Returns:
-        pandas DataFrame:
-            index = tickers
-            columns = ['purchase_value', 'current_value']
-    """
-    df = transactions_df.copy()
-    df['total'] = df['quantity'] * df['price']
-    
-    purchase_value = df.groupby('ticker')['total'].sum()
-    quantity_total = df.groupby('ticker')['quantity'].sum()
-    
-    current_value = quantity_total * pd.Series(latest_prices)
-    
-    result = pd.DataFrame({
-        'purchase_value': purchase_value,
-        'current_value': current_value
-    }).fillna(0)
-    
-    return result
