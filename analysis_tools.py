@@ -311,28 +311,6 @@ def portfolio_value_over_time(transactions_df, price_df):
     portfolio_values = (qty_df * price_df).sum(axis=1)
     return portfolio_values
 
-# 7. CURRENT VS PURCHASE VALUE
-def portfolio_current_vs_purchase():
-    """
-    Calcola per ciascun ticker il valore a prezzo medio di acquisto
-    e il valore corrente basato sugli ultimi prezzi di chiusura.
-    Returns: DataFrame ['purchase_value', 'current_value']
-    """
-    portfolio = unwrap_db_response(get_current_portfolio())
-    if not portfolio:
-        return pd.DataFrame(columns=['purchase_value','current_value'])
-    
-    df = pd.DataFrame(portfolio)
-    df = df[['ticker', 'total_quantity', 'avg_price']].rename(columns={'total_quantity': 'quantity'})
-    
-    tickers = df['ticker'].tolist()
-    latest_prices = get_latest_close_prices(tickers)
-    
-    df['purchase_value'] = df['quantity'] * df['avg_price']
-    df['current_value'] = df['quantity'] * df['ticker'].map(latest_prices)
-    
-    result = df.set_index('ticker')[['purchase_value','current_value']]
-    return result
 
 # ============================
 # MAIN TEST (Se eseguito come script)
@@ -344,23 +322,14 @@ if __name__ == "__main__":
     print("\n1. Compute Returns:")
     print(tool_compute_returns())
 
-    # Test 2: Helper Time Series
-    print("\n2. Portfolio Value Over Time:")
-    start_date = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
-    end_date = datetime.now().strftime('%Y-%m-%d')
-    pv = portfolio_value_over_time(start_date, end_date)
-    if not pv.empty:
-        print(pv.tail())
-    else:
-        print("Dati storici non disponibili o portafoglio vuoto.")
 
-    # Test 3: Best Returns
+    # Test 2: Best Returns
     print("\n3. Best Returns Data:")
     best_returns = get_best_returns_data()
     for item in best_returns:
         print(item) 
 
-    # Test 4: Sector Diversification
+    # Test 3: Sector Diversification
     print("\n4. Sector Diversification Comparison:")
     sector_df = tool_sector_diversification_comparison()
     if not sector_df.empty: 
@@ -368,12 +337,12 @@ if __name__ == "__main__":
     else:        
         print("Nessun dato disponibile.")       
 
-    # Test 5: Markowitz Optimization
+    # Test 4: Markowitz Optimization
     print("\n5. Markowitz Optimization:")
     optimization_result = tool_optimize_markowitz_target(0.10)
     print(optimization_result)  
     
-    # Test 6: Sentiment Analysis
+    # Test 5: Sentiment Analysis
     print("\n6. Sentiment Analysis:")  
     sentiment_result = tool_sentiment_analysis()
     print(sentiment_result)
