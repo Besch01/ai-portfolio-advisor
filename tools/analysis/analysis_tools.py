@@ -180,7 +180,7 @@ def tool_sector_diversification_comparison():
 def tool_optimize_markowitz_target(target_return_annualized=0.10):
     rows = unwrap_db_response(get_current_portfolio())
     tickers = [row['ticker'] for row in rows]
-
+    
     if len(tickers) < 2: 
         return {"error": "Servono almeno 2 asset per l'ottimizzazione."}
 

@@ -2,6 +2,7 @@ import json
 from .prompts import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
 import webbrowser
 import os
+from tools.analysis.consultant import tool_compare_fingpt_vs_portfolio, tool_should_i_sell
 
 # --- 1. REAL TOOLS IMPORT ---
 
@@ -49,6 +50,13 @@ from tools.visualization.visualization_tools import (
     plot_sentiment_analysis
 )
 
+# Consultant tool
+from tools.analysis.consultant import (
+    tool_compare_fingpt_vs_portfolio, 
+    tool_should_i_sell,
+    tool_scan_market_trends
+)
+
 # --- 2. TOOL REGISTRY ---
 # Mapping string names from the LLM to actual Python functions
 TOOLS = {
@@ -83,7 +91,13 @@ TOOLS = {
     "show_price_chart": plot_stock_price,
     "show_correlation_chart": plot_asset_correlation_heatmap,
     "show_advice_chart": plot_allocation_vs_markowitz,
-    "show_sentiment_chart": plot_sentiment_analysis
+    "show_sentiment_chart": plot_sentiment_analysis,
+
+    # CONSULTANT
+    "consult_fingpt": tool_compare_fingpt_vs_portfolio,
+    "analyze_sell_decision": tool_should_i_sell,
+    "scan_market_trends": tool_scan_market_trends,
+    
 }
 
 class Agent:

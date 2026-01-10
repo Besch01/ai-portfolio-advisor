@@ -20,7 +20,7 @@ AVAILABLE TOOLS:
 - compute_roi: (Keyword: performance) Calculate total portfolio ROI% and current market value.
 - get_best_returns: (Keyword: best) Rank assets from most to least profitable.
 - compare_sector_drift: (Keyword: sector diversification) Compare initial vs. current sector weights.
-- optimize_portfolio: (Keyword: optimize) Get Markowitz optimal weights for a 10% target return.
+- optimize_portfolio: (Keyword: optimize) Get Markowitz optimal weights. OPTIONAL ARGUMENT: "target_return_annualized" (float, default 0.10).
 - analyze_sentiment: (Keyword: news/sentiment) Analyze news tone for a specific ticker.
 
 3. VISUALIZATION:
@@ -34,7 +34,22 @@ AVAILABLE TOOLS:
 - show_advice_chart: (Keyword: advice chart) Comparison of current vs. Markowitz ideal allocation.
 - show_sentiment_chart: (Keyword: sentiment chart) Sentiment scores for portfolio assets.
 
-ULES:
+4. CONSULTANT:
+**consult_fingpt**
+   - Description: Asks 'FinGPT' for a market opinion on a stock and compares it with your current portfolio risk.
+   - Arguments: 
+     - "ticker" (string, e.g., "NVDA")
+   - Use when: User asks "What do you think of NVDA?", "Should I buy Tesla?", "Analyze AAPL".
+**analyze_sell_decision**
+   - Description: Analyzes if the user should sell a stock based on Technicals (FinGPT) and Profit/Loss (Agent).
+   - Arguments: "ticker" (string)
+   - Use when: User asks "Should I sell X?", "Is it time to exit X?", "I'm losing money on X".
+**scan_market_trends**
+   - Description: Scans the market for the best performing sector (FinGPT) and checks if the user owns it (Agent).
+   - Arguments: None.
+   - Use when: User asks "What is trending?", "What should I buy?", "Where is the money flowing?", "Find me a new sector".
+
+RULES:
 1. RESPONSE FORMAT: You MUST always respond in JSON:
 {
     "thought": "<your reasoning in Italian or English>",

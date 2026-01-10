@@ -1,0 +1,13 @@
+# Ignora file compilati Python
+__pycache__/
+*.pyc
+
+# Ignora file di sistema Mac
+.DS_Store
+
+# Ignora le tue chiavi segrete (IMPORTANTISSIMO)
+.env
+
+# Ignora il database locale (così ognuno ha il suo)
+*.db
+portfolio_manager.db
