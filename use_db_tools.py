@@ -10,7 +10,6 @@ from db_tools import (
     get_best_avg_price,
     get_transactions_by_ticker,
     get_transactions_by_date,
-    get_portfolio_by_sector,
     get_sector_allocation,
     get_portfolio_summary,
     update_transaction,
@@ -19,14 +18,26 @@ from db_tools import (
 
 # --- Inserimento transazioni di test ---
 print("=== Inserimento transazioni di test ===")
+
+# Transazioni originali
 tx1 = {"date": "2026-01-08", "ticker": "AAPL", "name": "Apple Inc.", "sector": "Technology", "quantity": 10, "price": 150.0}
 tx2 = {"date": "2026-01-08", "ticker": "MSFT", "name": "Microsoft Corp.", "sector": "Technology", "quantity": 5, "price": 300.0}
 
+# Nuovi Ticker per il test (Tesla e Bitcoin)
+tx3 = {"date": "2026-01-10", "ticker": "TSLA", "name": "Tesla, Inc.", "sector": "Automotive", "quantity": 12, "price": 245.30}
+tx4 = {"date": "2026-01-10", "ticker": "BTC", "name": "Bitcoin", "sector": "Crypto", "quantity": 0.5, "price": 43200.0}
+
+# Esecuzione degli inserimenti
 res1 = insert_transaction(tx1)
 res2 = insert_transaction(tx2)
+res3 = insert_transaction(tx3)
+res4 = insert_transaction(tx4)
 
-print(res1)
-print(res2)
+# Stampe dei risultati
+print(f"AAPL: {res1}")
+print(f"MSFT: {res2}")
+print(f"TSLA: {res3}")
+print(f"BTC:  {res4}")
 
 
 # --- Portfolio corrente ---
@@ -72,12 +83,6 @@ print(summary)
 print("\n=== Allocazione per settore ===")
 sector_alloc = get_sector_allocation()
 print(sector_alloc)
-
-
-# --- Portfolio per settore (totale investito) ---
-print("\n=== Portfolio per settore (totale investito) ===")
-by_sector = get_portfolio_by_sector()
-print(by_sector)
 
 
 # --- Transazioni per data ---
