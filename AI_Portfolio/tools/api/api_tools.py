@@ -64,10 +64,11 @@ def get_latest_close_prices(tickers):
         stock = yf.Ticker(ticker)
         hist = stock.history(period='5d')  # last 5 days to ensure at least yesterday
         if not hist.empty:
-            latest_prices[ticker] = hist['Close'][-1]
+            latest_prices[ticker] = hist['Close'].iloc[-1]
         else:
             latest_prices[ticker] = None
     return latest_prices
+
 
 
 """
