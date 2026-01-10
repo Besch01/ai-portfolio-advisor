@@ -13,20 +13,18 @@ logger = logging.getLogger(__name__)
 
 
 def get_connection():
+    """Returns a connection to the SQLite database with row access via dict."""
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         db_path = os.path.join(base_dir, "portfolio_manager.db")
-        
-        # AGGIUNGI QUESTA RIGA PER IL DEBUG
-        print(f"DEBUG: Sto cercando il DB in: {os.path.abspath(db_path)}")
-        
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         return conn
     except sqlite3.Error as e:
         logger.error(f"DB connection error: {e}")
         return None
-    
+
+
 # --- Helper interni ---
 
 def _dict_from_cursor(cur):

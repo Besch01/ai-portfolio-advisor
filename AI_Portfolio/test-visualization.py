@@ -1,5 +1,4 @@
-from tools.visualization.visualization_tools import plot_sector_allocation
+from tools.visualization.visualization_tools import plot_sentiment_analysis
 
 
-plot_sector_allocation(portfolio_id = 1)
-
+plot_sentiment_analysis(save_path='plots/sentiment.png')

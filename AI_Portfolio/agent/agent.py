@@ -3,20 +3,13 @@
 import json
 from .prompts import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE
 
-# --- 1. IMPORT DEI TOOL REALI ---
-# Qui colleghiamo i muscoli (API e DB) al cervello (Agente)
-from tools.api.api_tools import get_market_transaction_data
-from tools.database.db_tools import insert_transaction, get_sector_allocation, get_current_portfolio
-#from tools.visualization.visualization_tools import plot_sector_allocation 
-from tools.api.api_tools import buy_stock_flow
+# Import dei tool reali
+from tools.database.db_tools import get_current_portfolio, get_portfolio_by_sector  # esempio
+from tools.visualization.visualization_tools import plot_sector_allocation  # esempio
 
+# Registry dei tool disponibili
 TOOLS = {
-    # <--- Aggiungi questo!
-    "get_current_portfolio": get_current_portfolio,
-    #"plot_sector_allocation": plot_sector_allocation,
-    "get_market_transaction_data": get_market_transaction_data,
-    "insert_transaction": insert_transaction,
-    "buy_stock_flow": buy_stock_flow
+    "plot_sector_allocation": plot_sector_allocation
 }
 
 class Agent:
@@ -25,6 +18,13 @@ class Agent:
         self.system_prompt = SYSTEM_PROMPT
 
     def run(self, user_input):
+        """
+        Esegue una richiesta dell’utente:
+        1. Invia prompt al LLM (fittizio o reale)
+        2. Analizza la risposta JSON
+        3. Chiama il tool se necessario
+        4. Restituisce il risultato
+        """
         # Costruzione del prompt per l'LLM
         prompt = USER_PROMPT_TEMPLATE.format(user_input=user_input)
 
@@ -33,7 +33,7 @@ class Agent:
             {"role": "user", "content": prompt}
         ]
 
-        # Chiamata LLM (qui interviene il tuo FakeLLMClient)
+        # Chiamata LLM
         response = self.llm.chat(messages)
 
         # Parsing JSON
@@ -45,17 +45,13 @@ class Agent:
         tool_name = decision.get("tool")
         args = decision.get("args", {})
 
-        # --- 3. ESECUZIONE TOOL ---
+        # Esecuzione tool se specificato
         if tool_name and tool_name in TOOLS:
             try:
-                # L'agente lancia la funzione corrispondente nel dizionario TOOLS
                 result = TOOLS[tool_name](**args)
-                
-                # Se il tool è l'API di mercato, l'output va salvato nel DB automaticamente?
-                # Per ora restituiamo il risultato, poi vedremo come concatenarli.
                 return result
             except Exception as e:
                 return f"Error running tool '{tool_name}': {e}"
         else:
-            # Nessun tool necessario (es. una domanda generica)
+            # Nessun tool necessario, restituisco il thought
             return decision.get("thought", "No action taken.")
