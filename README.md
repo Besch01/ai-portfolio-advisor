@@ -1,6 +1,6 @@
 # **AI Portfolio Advisor Project**
-### - **Course**: Advanced Programming in Python
-### - **Authors**: *Matteo Beschi, Cristina Saramondi, Paolo Roberti*
+### **Course**: Advanced Programming in Python
+### **Authors**: *Matteo Beschi, Cristina Saramondi, Paolo Roberti*
 
 
 AI Portfolio Advisor is a **Python-based financial analysis system** that combines portfolio analytics, visualization, optimization, and an AI agent to support portfolio performance evaluation and decision-making.
